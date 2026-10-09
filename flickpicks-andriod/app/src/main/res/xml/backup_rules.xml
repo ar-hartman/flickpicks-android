@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Auto Backup rules for Android 11 and lower (API 30 is this app's minSdk).
+   The token store is excluded: its values are encrypted with a device-bound Keystore key, so a
+   restored copy could never be decrypted (see store/SecureStore.kt). Keep in sync with
+   data_extraction_rules.xml.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="flykpicks_secure_prefs.xml" />
+</full-backup-content>

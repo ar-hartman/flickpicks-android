@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mirrors FlykColors.Canvas; used by the window background before Compose draws. -->
+    <color name="canvas">#FFFAF7F0</color>
+</resources>

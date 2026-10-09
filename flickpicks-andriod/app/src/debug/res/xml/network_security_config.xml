@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only. Release builds keep Android's default (no cleartext). -->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <!-- Intentional: the dev API is a LAN host over plain HTTP, set per developer in local.properties. -->
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
