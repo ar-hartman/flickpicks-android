@@ -18,6 +18,11 @@ import com.flykpicks.android.service.RecommendationsService
 import com.flykpicks.android.service.SearchService
 import com.flykpicks.android.service.SecurityService
 import com.flykpicks.android.service.TelemetryService
+import com.flykpicks.android.store.GenreStore
+import com.flykpicks.android.store.LibraryStore
+import com.flykpicks.android.store.PerUserState
+import com.flykpicks.android.store.RecommendationsStore
+import com.flykpicks.android.store.SearchStore
 import com.flykpicks.android.store.TokenStore
 import com.flykpicks.android.util.DeviceIdProvider
 import dagger.hilt.android.testing.HiltAndroidRule
@@ -59,6 +64,11 @@ class DependencyGraphTest {
     @Inject lateinit var telemetry: TelemetryService
     @Inject lateinit var tokenStore: TokenStore
     @Inject lateinit var device: DeviceIdProvider
+    @Inject lateinit var genreStore: GenreStore
+    @Inject lateinit var libraryStore: LibraryStore
+    @Inject lateinit var recommendationsStore: RecommendationsStore
+    @Inject lateinit var searchStore: SearchStore
+    @Inject lateinit var perUserState: Set<@JvmSuppressWildcards PerUserState>
 
     @Before
     fun inject() {
@@ -73,5 +83,10 @@ class DependencyGraphTest {
         assertTrue(!auth.hasSession)
         assertTrue(device.deviceId.isNotBlank())
         assertTrue(device.deviceName.contains("Android"))
+    }
+
+    @Test
+    fun everyPerUserStore_isInTheSetThatAChangeOfSessionResets() {
+        assertEquals(setOf(libraryStore, recommendationsStore, searchStore), perUserState)
     }
 }

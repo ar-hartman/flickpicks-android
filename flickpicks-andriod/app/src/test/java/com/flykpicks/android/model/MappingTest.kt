@@ -8,7 +8,9 @@ import com.flykpicks.android.model.profile.OrderError
 import com.flykpicks.android.testing.movieJson
 import com.flykpicks.android.util.GenreTranslator
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 const val INVENTORY_TV_JSON = """
@@ -65,6 +67,11 @@ class MappingTest {
         assertEquals(listOf(1, 3), items[0].ownedSeasons)
         assertNull(items[1].season)
         assertNull("empty seasons mean the whole series", items[2].season)
+        assertNull(items[2].ownedSeasons)
+        assertTrue(items[2].ownsSeason(7))
+        assertNull(items[1].ownedSeasons)
+        assertTrue(items[0].ownsSeason(3))
+        assertFalse(items[0].ownsSeason(2))
         assertEquals(MediaFormat.BLURAY, items[0].format)
         assertEquals(ItemCondition.LIKE_NEW, items[0].condition)
         // Unknown values fall back like iOS.

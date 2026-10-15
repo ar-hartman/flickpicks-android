@@ -21,7 +21,21 @@ class LibraryService @Inject constructor(
     private val genres: GenreTranslator,
 ) {
 
-    suspend fun fetchLibrary(): List<LibraryItemImpl> = api.fetchLibrary().items.flatten()
+    /**
+     * Reads every page. iOS reads only the first, which truncates a library of more than 20
+     * titles (ios-gaps.md G16). A title that moves between pages mid-read is kept once.
+     */
+    suspend fun fetchLibrary(): List<LibraryItemImpl> {
+        val titles = ArrayList<InventoryTitleDTO>()
+        var page = 1
+        do {
+            val response = api.fetchLibrary(page, PAGE_SIZE)
+            titles += response.items
+            val more = response.items.isNotEmpty() && page < response.totalPages
+            page++
+        } while (more && page <= MAX_PAGES)
+        return titles.distinctBy { it.mediaItemId }.flatten()
+    }
 
     /** For TV, [ownedSeasons] + [selectAllSeasons] choose the seasons; ignored for movies. */
     suspend fun addMediaItem(
@@ -62,4 +76,12 @@ class LibraryService @Inject constructor(
     }
 
     private fun List<InventoryTitleDTO>.flatten(): List<LibraryItemImpl> = flatMap { it.toLibraryItems(genres) }
+
+    private companion object {
+        /** The most the server returns per page. */
+        const val PAGE_SIZE = 100
+
+        /** Stops a server that never reports a last page from looping forever. */
+        const val MAX_PAGES = 200
+    }
 }

@@ -1,5 +1,6 @@
 package com.flykpicks.android.api
 
+import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.time.Clock
@@ -19,11 +20,18 @@ class TelemetrySession @Inject constructor(private val clock: Clock) {
     fun clientTs(): String = clock.instant().truncatedTo(ChronoUnit.SECONDS).toString()
 }
 
-/** Adds `X-Flyk-Session` / `X-Flyk-Client-Ts` to every request except poster images (blueprint §7.2). */
-class TelemetryInterceptor(private val session: TelemetrySession) : Interceptor {
+/**
+ * Adds `X-Flyk-Session` / `X-Flyk-Client-Ts` to every request except poster images (blueprint §7.2).
+ * With [onlyOrigin] set, other origins (e.g. a CDN poster URL) never get them.
+ */
+class TelemetryInterceptor(
+    private val session: TelemetrySession,
+    private val onlyOrigin: HttpUrl? = null,
+) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         if (request.url.encodedPath.contains("/media/poster")) return chain.proceed(request)
+        if (onlyOrigin != null && !request.url.hasOriginOf(onlyOrigin)) return chain.proceed(request)
         return chain.proceed(
             request.newBuilder()
                 .header(SESSION_HEADER, session.sessionId)

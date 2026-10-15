@@ -69,16 +69,19 @@ object ApiClient {
     }.build()
 
     /**
-     * Client for image loading (Coil). The bearer token goes only to [apiBaseUrl]'s origin, since
-     * a `posterUrl` may point at a CDN; a 401 there refreshes like any API call. No telemetry
-     * headers: iOS sends none with images, and the API skips them for posters anyway.
+     * Client for image loading (Coil). The bearer token and the telemetry headers go only to
+     * [apiBaseUrl]'s origin, since a `posterUrl` may point at a CDN; a 401 there refreshes like
+     * any API call. Posters carry no telemetry headers, as on iOS. The detail image does: the
+     * backend counts it as a detail view.
      */
     fun imageClient(
         base: OkHttpClient,
+        telemetry: TelemetrySession,
         tokenStore: TokenStore,
         authenticator: Authenticator,
         apiBaseUrl: HttpUrl,
     ): OkHttpClient = base.newBuilder()
+        .addInterceptor(TelemetryInterceptor(telemetry, onlyOrigin = apiBaseUrl))
         .addInterceptor(AuthInterceptor(tokenStore, onlyOrigin = apiBaseUrl))
         .authenticator(authenticator)
         .build()

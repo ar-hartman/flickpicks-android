@@ -17,6 +17,7 @@ val SansFamily: FontFamily = FontFamily.Default
  * `FlykType.Caption.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp)`.
  */
 object FlykType {
+    val LargeTitle = TextStyle(fontFamily = SansFamily, fontSize = 34.sp, lineHeight = 41.sp)
     val Title3 = TextStyle(fontFamily = SansFamily, fontSize = 20.sp)
     val Headline = TextStyle(fontFamily = SansFamily, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
     val Body = TextStyle(fontFamily = SansFamily, fontSize = 17.sp)

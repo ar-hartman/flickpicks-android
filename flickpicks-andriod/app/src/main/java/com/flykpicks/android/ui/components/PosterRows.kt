@@ -169,9 +169,11 @@ fun SearchGenreRow(
     modifier: Modifier = Modifier,
     posterWidth: Dp = DS.PosterWidthLarge,
 ) {
-    GenreRow(title, items.size, modifier) {
-        items(items) { item ->
-            SearchRowPosterCard(item, posterWidth, onClick = { onItemClick(item) })
+    PosterRowFrame(title, titleCount(items.size), showSeeAll = true, modifier) {
+        PosterLazyRow {
+            items(items) { item ->
+                SearchRowPosterCard(item, posterWidth, onClick = { onItemClick(item) })
+            }
         }
     }
 }
@@ -186,28 +188,34 @@ fun LibraryGenreRow(
     posterWidth: Dp = DS.PosterWidthLibrary,
     onRemove: ((LibraryItemImpl) -> Unit)? = null,
 ) {
-    GenreRow(title, items.size, modifier) {
-        items(items) { item ->
-            LibraryRowPosterCard(
-                item = item,
-                posterWidth = posterWidth,
-                onClick = { onItemClick(item) },
-                onRemove = onRemove?.let { remove -> { remove(item) } },
-            )
+    PosterRowFrame(title, titleCount(items.size), showSeeAll = true, modifier) {
+        PosterLazyRow {
+            items(items) { item ->
+                LibraryRowPosterCard(
+                    item = item,
+                    posterWidth = posterWidth,
+                    onClick = { onItemClick(item) },
+                    onRemove = onRemove?.let { remove -> { remove(item) } },
+                )
+            }
         }
     }
 }
 
+/** "1 title", "3 titles". */
+internal fun titleCount(count: Int): String = if (count == 1) "1 title" else "$count titles"
+
 /**
- * Header ("GENRE · N titles … See All"), brass rule, then the scrolling posters over another rule.
- * "See All" is a plain label, as on iOS (ios-gaps.md G18).
+ * A titled row: header ("TITLE · [countLabel] … See All"), brass rule, then [content] over
+ * another rule. "See All" is a plain label, as on iOS (ios-gaps.md G18).
  */
 @Composable
-private fun GenreRow(
+internal fun PosterRowFrame(
     title: String,
-    count: Int,
-    modifier: Modifier,
-    content: LazyListScope.() -> Unit,
+    countLabel: String,
+    showSeeAll: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
 ) {
     Column(
         modifier = modifier
@@ -226,20 +234,22 @@ private fun GenreRow(
                 )
                 Text("·", Modifier.alignByBaseline(), style = FlykType.Body, color = FlykColors.Brass)
                 Text(
-                    text = if (count == 1) "1 title" else "$count titles",
+                    text = countLabel,
                     modifier = Modifier.alignByBaseline(),
                     style = FlykType.Subheadline,
                     color = FlykColors.Ink.copy(alpha = 0.5f),
                 )
             }
-            Text("See All", Modifier.alignByBaseline(), style = FlykType.Subheadline, color = FlykColors.Brass)
+            if (showSeeAll) {
+                Text("See All", Modifier.alignByBaseline(), style = FlykType.Subheadline, color = FlykColors.Brass)
+            }
         }
         BrassRule()
-        LazyRow(
-            modifier = Modifier
+        Box(
+            Modifier
                 .fillMaxWidth()
                 .drawBehind {
-                    // iOS hangs this rule 6pt below the scroller's padded bottom edge.
+                    // iOS hangs this rule 6pt below the content's padded bottom edge.
                     drawRect(
                         color = FlykColors.Brass.copy(alpha = 0.35f),
                         topLeft = Offset(0f, size.height + 5.dp.toPx()),
@@ -247,12 +257,23 @@ private fun GenreRow(
                     )
                 }
                 .padding(vertical = 12.dp),
-            contentPadding = PaddingValues(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
-            verticalAlignment = Alignment.Top,
-            content = content,
-        )
+        ) {
+            content()
+        }
     }
+}
+
+/** The horizontally scrolling posters inside a [PosterRowFrame], spaced as on iOS. */
+@Composable
+internal fun PosterLazyRow(modifier: Modifier = Modifier, userScrollEnabled: Boolean = true, content: LazyListScope.() -> Unit) {
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(24.dp),
+        verticalAlignment = Alignment.Top,
+        userScrollEnabled = userScrollEnabled,
+        content = content,
+    )
 }
 
 internal val PreviewMediaItems = listOf("The Third Man", "Brazil", "Paris, Texas", "Chungking Express").mapIndexed { i, title ->

@@ -30,8 +30,8 @@ Status legend: ✅ done · 🟡 in progress · ⬜ not started · ⛔ blocked
 | 2 | [Design system components](#phase-2--design-system-components) | ✅ | 0 |
 | 3 | [App shell & navigation](#phase-3--app-shell--navigation) | ✅ | 1, 2 |
 | 4 | [Authentication flows](#phase-4--authentication-flows) | 🟡 | 3 |
-| 5 | [Library](#phase-5--library) | ⬜ | 4 |
-| 6 | [Search & discovery](#phase-6--search--discovery) | ⬜ | 5 |
+| 5 | [Library](#phase-5--library) | 🟡 | 4 |
+| 6 | [Search & discovery](#phase-6--search--discovery) | 🟡 | 5 |
 | 7 | [Profile root & feature flags](#phase-7--profile-root--feature-flags) | ⬜ | 4 |
 | 8 | [Security settings](#phase-8--security-settings) | ⬜ | 7 |
 | 9 | [Payments, addresses & membership](#phase-9--payments-addresses--membership) | ⬜ | 7 |
@@ -192,35 +192,46 @@ Blueprint §8.3, §8.5, §8.6, §9.1, §10.1–10.4. **Screens and behavior foll
 
 ## Phase 5 — Library
 
-Blueprint §9.2, §10.7, §11.13, §11.18, Appendix A.
+Blueprint §9.2, §10.7, §11.13, §11.18, Appendix A. **Screens and behavior follow the iOS views** (`LibraryView`, `LibraryItemDetailView`, `TVSeasonDetailView`, `EditLibraryItemSheet`); where iOS has a bug, Android does what it intends (D30). Paging and payloads were checked against the backend source (`UserInventoryController`).
 
-- [ ] `GenreStore` wrapping `GenreService.load()` (load if needed; fail silently, so unknown genres show "—"). iOS loads it when the signed-in shell appears
-- [ ] Library pagination: confirm the server's default page size; page through if needed (ios-gaps G16)
-- [ ] Per-user state (library, recommendations, search, and later the profile cache) resets on sign-out, so the next account never sees the previous one's data (ios-gaps G21)
-- [ ] `LibraryViewModel`: load + transform; `item(id)`, `items(forTitleId)`, `isSeasonOwned`; optimistic update/remove with rollback on failure; seasons update; add from search
-- [ ] `LibraryScreen`: client-side title filter, `HeaderStats`, genre rows, loading/error (retry)/empty states
-- [ ] Remove item: long-press → confirmation dialog
-- [ ] `LibraryItemDetailScreen` (not specified; derive from iOS `Views/`) (Q5)
-- [ ] `EditLibraryItemSheet`
-- [ ] Every mutation calls `recommendations.markStale(LIBRARY_CHANGED)`
+- [x] `GenreStore` wrapping `GenreService.load()`: loads once, callers arriving mid-load wait for it, a failure is silent (unknown genres show "—") and the next caller retries. Loaded on sign-in and on a signed-in cold start; every library load waits for it (ios-gaps G23)
+- [x] Library pagination: the server gives 20 titles a page by default and 100 at most, so the fetch reads every page at `limit=100` (ios-gaps G16)
+- [x] Per-user state resets when the session changes hands: stores implement `PerUserState`, bound into a Hilt set that `AuthViewModel` resets on sign-out, on session expiry and on sign-in; a result still in flight for the old account is dropped (ios-gaps G21). Only the library is in the set so far: Phases 6 and 7 add theirs
+- [x] `LibraryStore` (app-wide, D28) + `LibraryViewModel`: load, `item(id)`, `items(forTitleId)`, `isSeasonOwned`; edit and remove show at once and roll back on failure (D29); seasons update; add from search (used by Phase 6)
+- [x] `LibraryScreen`: title filter as you type (ios-gaps G22), `HeaderStats`, genre rows, and one of loading / error with retry / empty / no results (ios-gaps G26). Reloads each time it comes back into view, as on iOS
+- [x] Remove item: long-press → confirmation dialog; a refusal puts the copy back and says why
+- [x] `LibraryItemDetailScreen` (Q5): backdrop (`AsyncDetailImage`), overview, copies with appraisal, and for a series its seasons with "Add All Seasons". Closes itself when the title has left the library (ios-gaps G27)
+- [x] `TVSeasonDetailScreen`: which copies own the season; add it to a copy or take it off one; taking off a copy's last season removes the copy, after a confirmation
+- [x] `EditLibraryItemSheet`: format and condition menus, Save, "Remove from library" behind a confirmation; errors show in the sheet; it can't be dismissed mid-request
+- [x] Every change the server accepts emits `LibraryStore.changes` (iOS `onDidChangeLibrary`). Phase 6 has recommendations mark `LIBRARY_CHANGED` stale from it
+- [x] Fixed along the way: the poster fallback URL sent `mediaID` where the server takes `flyksId` (copied from iOS in Phase 2, ios-gaps G25); the detail image now carries the telemetry headers the backend counts detail views by
+- [ ] Check against the dev API, with Phase 4's. Every flow was clicked through on the emulator against a scripted mock instead
 
-**Done when:** you can view, filter, edit, re-season and remove library items, and the list stays consistent when the network fails.
+**Done when:** you can view, filter, edit, re-season and remove library items, and the list stays consistent when the network fails. Everything but the dev-API run holds.
+
+**Tests:** 60 new JVM tests (195 total): `LibraryStoreTest` (paging, optimistic changes and rollback, loads racing changes, account switches), `GenreStoreTest`, `LibraryViewModelTest`, `LibraryItemDetailViewModelTest`, plus additions to `AuthViewModelTest`, `ImageClientTest`, `PosterLoadingTest` and `MappingTest`. 13 new on-device tests (30 total): `LibraryScreensTest`, and the per-user set in `DependencyGraphTest`. `MainNavigationTest` now runs the shell over a stand-in Library graph (D31).
 
 ---
 
 ## Phase 6 — Search & discovery
 
-Blueprint §9.3–9.4, §10.5–10.6, §11.11–11.12, §11.17.
+Blueprint §9.3–9.4, §10.5–10.6, §11.11–11.12, §11.17. **Screens and behavior follow the iOS views** (`SearchView`, `SearchItemDetailView`, `AddToLibrarySheet`) and stores (`RecommendationsStore`, `SearchStore`, `SearchScreenState`); where iOS has a bug, Android does what it intends (D33).
 
-- [ ] `RecommendationsViewModel`: 8 sections fetched in parallel; cache policy (popular/top-rated cached for the session, inventory/search-history reload when marked stale); `loadIfNeeded`, `refresh`, `markStale`
-- [ ] `SearchViewModel` + `SearchScreenState` (query, hasSearched, detail navigation stack)
-- [ ] `SearchScreen`: recommendation rows before the first search; loading / empty ("No results for …") / results grouped by genre
-- [ ] `X-Flyk-Source` header on every search/recommendation call (§13.2 table)
-- [ ] `SearchItemDetailScreen`: poster header, chips, genres, overview, "already in library" state, TV seasons via `AssetService.fetchSeasons`; fire the `fetchMediaItem` attribution call without blocking
-- [ ] `AddToLibrarySheet`: format, condition, seasons / "All Seasons"
-- [ ] Searching calls `markStale(SEARCH_PERFORMED)`
+- [x] `RecommendationsStore` (app-wide, D32): the 8 rows fetched in parallel after the genres; popular / top-rated kept for the session, "Because You Own It" reloaded on library changes, "Based on Searches" after each search. `loadIfNeeded` (callers mid-load wait), `refresh` (pull to refresh), `refreshSection` (a row's Retry), `markStale`. Each row keeps only its latest fetch's answer; search-history rows leave out what the matching "Because You Own It" row shows
+- [x] `LibraryStore.changes` and `SearchStore.completions` → `markStale`. Like iOS, a stale row reloads right away (the blueprint says on next appearance); a change during the first load re-asks the affected rows (ios-gaps G35). `LibraryViewModel.load` starts `loadIfNeeded` after the library, as iOS `LibraryView` does
+- [x] Per-user: `RecommendationsStore` and `SearchStore` are in the `PerUserState` set. Titles are mapped only after `GenreStore.loadIfNeeded()`
+- [x] `SearchStore` (results, iOS `SearchStore`) + `SearchViewModel` (query, has-searched, iOS `SearchScreenState`). The detail stack is the Discover tab's back stack; leaving the tab pops it and ends the ViewModel, which clears the results (D32)
+- [x] `SearchScreen`: the 8 rows (skeletons until the first answer, "Nothing to show yet.", "Couldn't load this section." + Retry), pull to refresh; searching spinner; results by genre; "No results found"; a failed search shows why with "Try Again" (iOS says "No results found", ios-gaps G5)
+- [x] `X-Flyk-Source` on every search / recommendation / detail call: rows send their `recommendation.*` source, and a title opened from a row sends it with its attribution call, backdrop and seasons (checked request by request against the mock)
+- [x] `SearchItemDetailScreen`: backdrop, title, "date • genres", type chip, "Overview:", "Add To Inventory"; seasons are fetched for the add sheet (iOS shows no season list here). The attribution call (`fetchMediaItem`) runs in the application scope and never blocks the screen. "In Your Library" chip when a copy is owned (not on iOS; D33). After process death the title comes from that call
+- [x] `AddToLibrarySheet`: format and condition; for a series, "All Seasons" or pick → confirm → a format and condition per season, sent as one copy per format and condition → `LibraryStore.addFromSearchItem`. If a later copy fails, the seasons already added leave the selection (iOS re-adds them, ios-gaps G34). Format shows display names (iOS shows raw values, G33)
+- [x] Searching marks `SEARCH_PERFORMED` stale (only a search the server answered, as iOS)
+- [x] Shared with the Library: `groupByPrimaryGenre`, `LoadErrorNotice` / `EmptyNotice`, `GroupedCard` / `GroupedDivider`, `DetailHeroBanner`, `PosterRowFrame`, and the edit sheet's sheet parts (`LibraryItemSheet`, `SheetTopBar`, `SheetTitleCard`, `ValueMenu`, …)
+- [ ] Check against the dev API, with Phases 4–5's. Every flow was clicked through on the emulator against a scripted mock instead
 
-**Done when:** you can discover titles, search, open details and add to the library from search, and the library and recommendations update.
+**Done when:** you can discover titles, search, open details and add to the library from search, and the library and recommendations update. Everything but the dev-API run holds.
+
+**Tests:** 38 new JVM tests (233 total): `RecommendationsStoreTest` (parallel load, sources, staleness and its races, dedupe, reset), `SearchViewModelTest`, `SearchItemDetailViewModelTest` (attribution, seasons, process death, every add path incl. partial failure), one in `LibraryViewModelTest`. 12 new on-device tests (42 total): `SearchScreensTest`, and the per-user set in `DependencyGraphTest`. `MainNavigationTest` now runs the shell over stand-in Library and Discover graphs (D31).
 
 ---
 
@@ -229,7 +240,7 @@ Blueprint §9.3–9.4, §10.5–10.6, §11.11–11.12, §11.17.
 Blueprint §9.5–9.6, §10.8, §12.
 
 - [ ] Feature flags in Profile: `FeatureFlagStore` (Phase 4) already caches, refreshes after sign-in and reads a missing key as `false`; also refresh when Profile appears, as iOS does
-- [ ] `ProfileViewModel`: profile + membership fetched in parallel, JSON cache loaded on init
+- [ ] `ProfileViewModel`: profile + membership fetched in parallel, JSON cache loaded on init. The cache is per-user: add it to the `PerUserState` set and key it by user id (ios-gaps G21)
 - [ ] `ProfileScreen`: header card (flag), Account / Activity / Preferences / Support sections, each row gated by its flag; logout with confirmation
 - [ ] Edit profile (names, display name, public-name source; "display name taken" error)
 - [ ] Avatar upload (Android photo picker → multipart) and remove
@@ -307,6 +318,7 @@ Blueprint §11.20, §14.
 
 - [ ] `CAMERA` permission in the manifest, requested at runtime when the barcode button is tapped, with a rationale screen and a "denied permanently" path
 - [ ] `BarcodeScannerView`: CameraX preview + ML Kit (EAN-13, UPC-A, ISBN), targeting overlay, haptic on detection, no duplicate detections
+- [ ] Barcode button beside the search field (iOS `barcode.viewfinder`, brass); Phase 6 left it out rather than show a dead button
 - [ ] `BarcodeFlowSheet` from `SearchScreen`; `BarcodeService.lookupBarcode` → detail with `source = "search.barcode"`, or the unknown-title submission form (`submitUnknownTitle`). Both endpoints are pending on the backend (iOS DEP-12)
 
 **Done when:** scanning a real disc barcode opens the matching title (once DEP-12 ships).
@@ -318,7 +330,7 @@ Blueprint §11.20, §14.
 Blueprint §13.
 
 - [ ] Session UUID per app launch shared by every request (wired in Phase 1, checked here)
-- [ ] Row visibility tracking on recommendation rows: item IDs seen, scroll depth, dwell time
+- [ ] Row visibility tracking on recommendation rows (`RecommendationRow`): item IDs seen, scroll depth, dwell time
 - [ ] `ImpressionBatcher` (iOS behavior): flush at 50 events, on a 30-second timer, on leaving the Search tab and on `ON_STOP`; a 404 disables it for the session; retry a batch once with the same `eventId`s. Cap the retry queue (unlike iOS, ios-gaps G4)
 - [x] Endpoint + DTOs: `POST /v1/telemetry/impressions` (`TelemetryService`, Phase 1)
 
@@ -334,6 +346,7 @@ Blueprint §13.
 - [ ] Accessibility: content descriptions, 48dp touch targets, font scaling, TalkBack pass
 - [ ] Tablet/large screen: max content widths, landscape
 - [ ] Process death and config changes: `SavedStateHandle` for in-progress flows (MFA, recovery, forms)
+- [ ] Check whether the signed-in shell's ViewModels are cleared on sign-out. Its NavController is dropped with the shell, and its back stack entries may keep their ViewModels until the activity dies. (Per-user data is safe either way: it lives in the stores that sign-out resets.)
 - [ ] Offline / `NetworkUnavailable` UX consistent across screens
 - [ ] Instrumented UI tests for critical paths (login + MFA, add to library, logout)
 - [ ] CI: build + unit tests + lint on PRs
@@ -375,6 +388,14 @@ Changes from the blueprint, and choices it leaves open.
 | D24 | `AuthViewModel` holds app-wide auth (login, MFA, logout, session). Registration, password recovery and the MFA reset request have their own ViewModels instead of §9.1's pass-through methods. | Each flow's state survives rotation and dies with its screen; iOS keeps that state in the views | Done |
 | D25 | Auth UX follows iOS where the plan or blueprint differ: countdowns read "Try again in Ns" (not X:XX); no resend on the recovery code step (go back a step instead); the MFA reset sheet shows any error, not only 429 | iOS behavior | Done |
 | D26 | `-Pflyk.apiBaseUrl.debug=…` (and the other `flyk.*` keys) override `local.properties` for one build | Lets a build target a local mock or another server without editing `local.properties` | Done |
+| D27 | The library detail screens and the edit sheet use iOS's grouped-list colors (gray page, white cards) at their light-mode values: `FlykColors.GroupedBackground` / `GroupedCard` / `GroupedSeparator` | That is what those iOS screens show; they don't use the Deco creams (and break in dark mode, ios-gaps G28). Three tokens in `Color.kt` if you'd rather have creams. | Done — **awaiting your confirmation** |
+| D28 | The library lives in a `@Singleton LibraryStore`, not only in §9.2's `LibraryViewModel`. `LibraryViewModel` and `LibraryItemDetailViewModel` hold what belongs to a screen; the season screen shares the title screen's ViewModel | The Library tab's three screens and the Discover tab all read and change the same list (iOS `LibraryStore` is app-wide too). The season screen needs the seasons the title screen fetched, and fetching them again would count a second detail view on the backend | Done |
+| D29 | Edits and removals show at once as pending edits laid over the server's last list; a failure drops the edit. Requests run in the application scope. `updateItem` is optimistic too (iOS waits for the server on an edit) | A saved copy of the list to restore can bring back stale data when a load or another change lands in between. A screen closing mid-request can't leave a change half applied | Done |
+| D30 | Library behavior follows what iOS intends where its code falls short: the filter filters (G22); loads wait for genres (G23); an empty season list is the whole series (G24); one of loading / error / empty shows (G26); a screen closes when its title is gone (G27); no developer notes on the season screen (G29); "Add All Seasons" reports failure (G30). Kept as on iOS: one poster per copy (G31), no "Remove" on a whole-series copy (G32), "See All" (G18) | Same rule as D15 | Done |
+| D31 | `MainScaffold` takes the tab graphs as a parameter; pushes and pops in the Library graph act only for the screen on top | The shell's tests run it over stand-in screens now that the Library's need Hilt and a server. A screen still animating out can't push or pop a second time | Done |
+| D32 | Discover's state is split three ways: the rows in a `@Singleton RecommendationsStore` (§9.4's `RecommendationsViewModel`), the last search's results in a `@Singleton SearchStore`, and the query and has-searched flag in `SearchViewModel`, scoped to the Discover screen. The detail route carries the title id and its row's `X-Flyk-Source`; the detail screen finds the title in the two stores, or, after process death, uses the attribution call's answer | The Library tab starts the rows loading and library changes mark them stale while Discover isn't showing. Leaving the tab pops the Discover screen, so iOS's reset-on-leave is simply the ViewModel ending (it clears the results). Passing ids, not the title, keeps routes short and survives process death | Done |
+| D33 | Discover follows iOS where the blueprint differs: all eight rows always shown, with iOS's titles and order; stale rows reload at once; the detail screen as iOS draws it (no season list, poster header or rating chips); the add sheet's menus, season picking and one copy per format and condition. Android adds: an "In Your Library" chip on the detail screen (iOS gives no sign); a failed search shows its error (G5); a change during the first load re-asks the affected rows (G35); a partly failed add doesn't add the saved seasons twice (G34); the format menu shows display names (G33). Not ported: the barcode button until Phase 12, and the "Based on what's trending" caption, which iOS never shows | Same rule as D15 / D30; the chip is the plan's "already in library" state, kept small because owning a second copy is normal | Done |
+| D34 | The detail screen's attribution call (`GET /v1/media/{id}`) runs in the application scope, not the screen's | iOS fires it as an unstructured task, so backing out at once still lets the backend count the view | Done |
 
 ## Open questions
 
@@ -386,7 +407,7 @@ Resolve these from the iOS source and supporting docs (check `docs/OPEN_QUESTION
 | Q2 | JSON raw values for `PublicNameSource`, `MFAMethod`; server date formats | P1 | `PublicNameSource`: `DISPLAY_NAME` / `FIRST_NAME`. `MFAMethod`: `sms` / `totp` / `email` (compared case-insensitively). Dates: ISO-8601 strings, with or without fractional seconds. All other enums are SCREAMING_SNAKE. ✅ |
 | Q3 | §16 lists seller dashboard, collection insights and referral endpoints that §7.4 has no interface for; `ListingDTO` has no endpoint | P1 | All three exist (`/v1/users/me/seller/dashboard`, `/collection/insights`, `/referral`, in iOS `ServiceLocator`). `ListingDTO` is unused on iOS too. ✅ |
 | Q4 | `accountRecoveryEnabled` gates a Login-screen link, but flags are fetched after auth. Is `/v1/feature-flags` callable unauthenticated, or does the cached value apply? | P4 | Flags require auth. iOS loads the cached flags at startup, so the Login link uses the last-known value (default off). ✅ |
-| Q5 | Screens referenced but not specified: LibraryItemDetail, HelpSupport, Appearance, `DecoFrame`, ChangePassword/DeleteAccount dialogs, FileDisputeSheet and the `canDispute` rule | P2, P5, P7, P8, P10 | `DecoFrame`: unused on iOS, not ported (D17). The rest still open. |
+| Q5 | Screens referenced but not specified: LibraryItemDetail, HelpSupport, Appearance, `DecoFrame`, ChangePassword/DeleteAccount dialogs, FileDisputeSheet and the `canDispute` rule | P2, P5, P7, P8, P10 | `DecoFrame`: unused on iOS, not ported (D17). LibraryItemDetail (and the season screen it pushes): ported from the iOS views in Phase 5. The rest still open. |
 | Q6 | Which endpoint provides `SeasonSummaryDTO` for TV details? | P6 | `GET /v1/media/tv/{flyksId}/seasons` (bare array) ✅ |
 | Q7 | Endpoint and payload for submitting impression batches | P13 | `POST /v1/telemetry/impressions {rows:[{eventId, source, clientTs, itemIds≤20, scrollDepth, dwellMs?}]}`; 404 = flag off ✅ |
 | Q8 | Barcode lookup: dedicated endpoint, or search with the raw code? | P12 | `GET /v1/search/barcode?upc=` (404 = unknown) + `POST /v1/media/submissions`; both pending on the backend (DEP-12) ✅ |
@@ -424,6 +445,8 @@ Any key can also be passed as a Gradle property for one build, which wins over `
 
 ## Changelog
 
+- **2026-10-14**: Phase 6 built: Discover's eight rows with their staleness rules, search, the title screen and the add sheet (per-season copies). 38 JVM + 12 on-device tests; every flow clicked through on the emulator against a scripted mock (row failure and retry, failed search, partly failed add, pull to refresh, leaving the tab, process death on a detail screen), with each request's `X-Flyk-Source` checked. Pending, with Phases 4–5: a run against the dev API, which can't be reached. New iOS gaps G33–G36; G5 corrected (iOS never shows the search error).
+- **2026-10-10**: Phase 5 built: `LibraryStore` with paging, optimistic edit / remove and per-account reset; the Library, title and season screens and the edit sheet. 60 JVM + 13 on-device tests; every flow clicked through on the emulator against a scripted mock (two accounts, forced failures, 25 titles over three pages). Paging and payloads checked against the backend source. Pending, with Phase 4: a run against the dev API. New iOS gaps G22–G32; G16 confirmed (the server pages at 20).
 - **2026-10-08**: Phase 4 built: real Login, MFA challenge and reset, registration, password recovery, logout, cached feature flags. 36 JVM + 2 on-device tests; every flow clicked through on the emulator against a scripted mock. Pending: a run against the dev API, which was down.
 - **2026-10-08**: Phase 3 complete. Auth gate, tabbed shell with per-tab back stacks (Discover resets, as on iOS), placeholder screens for every route, overlays, force logout, per-surface system bar icons. 6 JVM + 7 on-device tests; AndroidX Test bumped for API 37.
 - **2026-10-08**: Phase 2 complete. Design system ported from the iOS components (the blueprint's visuals were off in many places); poster loading with the iOS backfill retries; component gallery on launch. 14 new tests (91). New iOS gaps G17–G19.

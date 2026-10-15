@@ -11,14 +11,28 @@ import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.navigation.NavController
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavType
+import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
+import androidx.navigation.navigation
 import androidx.test.espresso.Espresso
+import com.flykpicks.android.ui.navigation.NavRoutes.Companion.ARG_FLYKS_ID
+import com.flykpicks.android.ui.navigation.NavRoutes.Companion.ARG_SEASON
+import com.flykpicks.android.ui.navigation.NavRoutes.Companion.ARG_SOURCE
+import com.flykpicks.android.ui.navigation.NavRoutes.Companion.ARG_TITLE_ID
 import com.flykpicks.android.ui.theme.FlykPicksTheme
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
-/** Tab and back-stack behavior of the signed-in shell, driven through the placeholder screens. */
+/**
+ * Tab and back-stack behavior of the signed-in shell, driven through placeholder screens. The
+ * Library and Discover tabs' real screens need Hilt and a server, so stand-in graphs with the
+ * same routes take their place here.
+ */
 class MainNavigationTest {
 
     @get:Rule
@@ -37,8 +51,11 @@ class MainNavigationTest {
                     onBackupCodeAlertDismiss = {},
                     onBackupCodeAlertGoToSecurity = {},
                     toast = null,
-                    placeholderActions = ShellPlaceholderActions(signOut = {}, showToast = {}),
-                )
+                ) { nav ->
+                    placeholderLibraryGraph(nav)
+                    placeholderSearchGraph(nav)
+                    profileGraph(nav, ShellPlaceholderActions(signOut = {}, showToast = {}))
+                }
             }
         }
     }
@@ -133,5 +150,68 @@ class MainNavigationTest {
         Espresso.pressBack()
         open("Edit 1 Main St")
         assertShowing("id = addr-1")
+    }
+}
+
+private fun NavGraphBuilder.placeholderLibraryGraph(nav: NavController) {
+    navigation(startDestination = MainTab.Library.startRoute, route = MainTab.Library.graphRoute) {
+        composable(NavRoutes.Library.route) {
+            TabRootPlaceholder(
+                title = "Library",
+                phase = 5,
+                links = listOf(
+                    PlaceholderLink("The Third Man", { nav.navigate(NavRoutes.LibraryDetail.build("title-1")) }),
+                    PlaceholderLink("Twin Peaks", { nav.navigate(NavRoutes.LibraryDetail.build("title-2")) }),
+                ),
+            )
+        }
+        composable(NavRoutes.LibraryDetail.route) { entry ->
+            val titleId = entry.arguments?.getString(ARG_TITLE_ID)
+            PushedPlaceholder(
+                title = "Library Item",
+                phase = 5,
+                onBack = nav::popBackStack,
+                args = listOf(ARG_TITLE_ID to titleId),
+                links = listOf(
+                    PlaceholderLink("Season 1", { nav.navigate(NavRoutes.TVSeasonDetail.build(titleId.orEmpty(), 1)) }),
+                    PlaceholderLink("Season 2", { nav.navigate(NavRoutes.TVSeasonDetail.build(titleId.orEmpty(), 2)) }),
+                ),
+            )
+        }
+        composable(
+            NavRoutes.TVSeasonDetail.route,
+            arguments = listOf(navArgument(ARG_SEASON) { type = NavType.IntType }),
+        ) { entry ->
+            val season = entry.arguments?.getInt(ARG_SEASON)
+            PushedPlaceholder(
+                title = "Season $season",
+                phase = 5,
+                onBack = nav::popBackStack,
+                args = listOf(ARG_TITLE_ID to entry.arguments?.getString(ARG_TITLE_ID), ARG_SEASON to season?.toString()),
+            )
+        }
+    }
+}
+
+private fun NavGraphBuilder.placeholderSearchGraph(nav: NavController) {
+    navigation(startDestination = MainTab.Search.startRoute, route = MainTab.Search.graphRoute) {
+        composable(NavRoutes.Search.route) {
+            TabRootPlaceholder(
+                title = "Discover",
+                phase = 6,
+                links = listOf(
+                    PlaceholderLink("Brazil (popular movies)", { nav.navigate(NavRoutes.SearchDetail.build("m1", "recommendation.popularMovies")) }),
+                    PlaceholderLink("Columbo (search result)", { nav.navigate(NavRoutes.SearchDetail.build("t 1/x", "search.results")) }),
+                ),
+            )
+        }
+        composable(NavRoutes.SearchDetail.route) { entry ->
+            PushedPlaceholder(
+                title = "Title Detail",
+                phase = 6,
+                onBack = nav::popBackStack,
+                args = listOf(ARG_FLYKS_ID to entry.arguments?.getString(ARG_FLYKS_ID), ARG_SOURCE to entry.arguments?.getString(ARG_SOURCE)),
+            )
+        }
     }
 }

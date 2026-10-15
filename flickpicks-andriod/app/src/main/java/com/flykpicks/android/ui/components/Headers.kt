@@ -1,6 +1,7 @@
 package com.flykpicks.android.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,10 +10,14 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -94,6 +100,44 @@ fun TopBand(modifier: Modifier = Modifier) {
 @Composable
 private fun Rule(color: Color, heightDp: Int) {
     Box(Modifier.fillMaxWidth().height(heightDp.dp).background(color))
+}
+
+/**
+ * A [TopBand] with a brass "Back" in it, for the pushed screens that keep the band instead of a
+ * [DecoTopBar] (the iOS library detail screens). The tap target extends below the band so it
+ * stays 48dp tall.
+ */
+@Composable
+fun TopBandWithBack(onBack: () -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier) {
+        TopBand()
+        Box(
+            Modifier
+                .statusBarsPadding()
+                .padding(start = 4.dp)
+                .clickable(onClickLabel = "Go back", role = Role.Button, onClick = onBack)
+                .height(48.dp)
+                .padding(horizontal = 12.dp),
+        ) {
+            Row(
+                Modifier.height(TopBandDefaults.BandHeight),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    contentDescription = null,
+                    tint = FlykColors.Brass,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    "Back",
+                    style = FlykType.Caption.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp),
+                    color = FlykColors.Brass,
+                )
+            }
+        }
+    }
 }
 
 /** Titles / Films / TV Shows counts between brass rules (iOS `HeaderStats`). */

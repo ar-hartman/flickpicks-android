@@ -45,7 +45,7 @@ class ImageClientTest {
     fun apiImages_sendTheBearerToken_butNoTelemetryHeaders() {
         api.enqueue(status(200))
 
-        fetch(api.url("/base/v1/media/poster?mediaID=m1"))
+        fetch(api.url("/base/v1/media/poster?flyksId=m1"))
 
         val request = api.taken()
         assertEquals("Bearer access-1", request.headers[AUTHORIZATION_HEADER])
@@ -54,13 +54,28 @@ class ImageClientTest {
     }
 
     @Test
-    fun otherOrigins_neverGetTheToken_evenOnTheSameHost() {
+    fun theDetailImage_carriesTheTelemetryHeaders_asTheBackendCountsItAsADetailView() {
+        api.enqueue(status(200))
+
+        fetch(api.url("/base/v1/media/detailImage?mediaID=m1"))
+
+        val request = api.taken()
+        assertEquals("Bearer access-1", request.headers[AUTHORIZATION_HEADER])
+        assertEquals(net.telemetry.sessionId, request.headers[TelemetryInterceptor.SESSION_HEADER])
+        assertEquals("2026-10-07T21:00:00Z", request.headers[TelemetryInterceptor.CLIENT_TS_HEADER])
+    }
+
+    @Test
+    fun otherOrigins_neverGetTheToken_orTheSessionId_evenOnTheSameHost() {
         // Both servers listen on the same host; only the port differs.
         cdn.enqueue(status(200))
 
         fetch(cdn.url("/posters/tt0094625.jpg"))
 
-        assertNull(cdn.taken().headers[AUTHORIZATION_HEADER])
+        val request = cdn.taken()
+        assertNull(request.headers[AUTHORIZATION_HEADER])
+        assertNull(request.headers[TelemetryInterceptor.SESSION_HEADER])
+        assertNull(request.headers[TelemetryInterceptor.CLIENT_TS_HEADER])
     }
 
     @Test
@@ -69,7 +84,7 @@ class ImageClientTest {
         api.enqueue(json(REFRESH_JSON))
         api.enqueue(status(200))
 
-        val code = fetch(api.url("/base/v1/media/poster?mediaID=m1"))
+        val code = fetch(api.url("/base/v1/media/poster?flyksId=m1"))
 
         assertEquals(200, code)
         assertEquals("Bearer access-1", api.taken().headers[AUTHORIZATION_HEADER])

@@ -8,15 +8,16 @@ import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.Query
 
 private const val LIBRARY_SOURCE = FlykSource.HEADER + ": " + FlykSource.LIBRARY_DETAIL
 
 /** Inventory endpoints. Mutations return the user's full library as a bare list. */
 interface LibraryApi {
-    /** Only the first page is requested, as on iOS (ios-gaps.md G16). */
+    /** One page of titles; pages are 1-based. The server defaults to 20 per page and caps [limit] at 100. */
     @Headers(LIBRARY_SOURCE)
     @GET("v1/users/inventory/media")
-    suspend fun fetchLibrary(): PaginatedResponse<InventoryTitleDTO>
+    suspend fun fetchLibrary(@Query("page") page: Int, @Query("limit") limit: Int): PaginatedResponse<InventoryTitleDTO>
 
     @Headers(LIBRARY_SOURCE)
     @POST("v1/users/inventory/media/add")

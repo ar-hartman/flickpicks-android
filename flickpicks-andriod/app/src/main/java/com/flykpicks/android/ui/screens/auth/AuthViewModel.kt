@@ -14,6 +14,8 @@ import com.flykpicks.android.model.auth.LoginOutcome
 import com.flykpicks.android.model.profile.FeatureFlagKey
 import com.flykpicks.android.service.AuthService
 import com.flykpicks.android.store.FeatureFlagStore
+import com.flykpicks.android.store.GenreStore
+import com.flykpicks.android.store.PerUserState
 import com.flykpicks.android.ui.navigation.MainTab
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -72,12 +74,17 @@ data class BackupCodeAlert(val remaining: Int) {
  * The session is restored from the token store on cold start. When the network layer ends the
  * session ([SessionEvents]), the app returns to Login with "Your session expired…".
  *
+ * Whenever the session changes hands, every [PerUserState] is reset first, so one account never
+ * sees another's data (ios-gaps.md G21).
+ *
  * Actions return their [Job] so tests can wait for them; the UI ignores it.
  */
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val authService: AuthService,
     private val featureFlags: FeatureFlagStore,
+    private val genres: GenreStore,
+    private val perUserState: Set<@JvmSuppressWildcards PerUserState>,
     sessionEvents: SessionEvents,
 ) : ViewModel() {
 
@@ -103,7 +110,7 @@ class AuthViewModel @Inject constructor(
                 }
             }
         }
-        if (_uiState.value.isAuthenticated) refreshFeatureFlags()
+        if (_uiState.value.isAuthenticated) loadSessionData()
     }
 
     fun login(): Job = viewModelScope.launch {
@@ -182,6 +189,7 @@ class AuthViewModel @Inject constructor(
             e.userFacingMessage
         }
         clearFields()
+        resetPerUserState()
         _uiState.value = AuthUiState(isAuthenticated = false, errorMessage = error)
     }
 
@@ -205,10 +213,13 @@ class AuthViewModel @Inject constructor(
     private fun onSignedIn(backupCodesRemaining: Int?) {
         loginPassword = ""
         mfaCode = ""
+        // Again here, not only on the way out: a session that ended while no screen was
+        // listening never reached onSessionEnded.
+        resetPerUserState()
         _uiState.update {
             it.copy(isAuthenticated = true, pendingMFA = null, backupCodeAlert = backupCodesRemaining?.let(::BackupCodeAlert))
         }
-        refreshFeatureFlags()
+        loadSessionData()
     }
 
     // The network layer has already cleared the tokens. Like iOS, a late event that arrives
@@ -216,7 +227,12 @@ class AuthViewModel @Inject constructor(
     private fun onSessionEnded(message: String) {
         if (!_uiState.value.isAuthenticated) return
         clearFields()
+        resetPerUserState()
         _uiState.value = AuthUiState(isAuthenticated = false, errorMessage = message)
+    }
+
+    private fun resetPerUserState() {
+        perUserState.forEach { it.reset() }
     }
 
     // The next person to sign in on this device starts with empty fields, as on iOS (whose
@@ -227,8 +243,11 @@ class AuthViewModel @Inject constructor(
         mfaCode = ""
     }
 
-    private fun refreshFeatureFlags() {
+    // What the signed-in shell needs, whether it was reached by signing in or by a cold start:
+    // fresh flags, and the genre table (iOS `RootView` loads it when the shell appears).
+    private fun loadSessionData() {
         viewModelScope.launch { featureFlags.load() }
+        viewModelScope.launch { genres.loadIfNeeded() }
     }
 
     private companion object {

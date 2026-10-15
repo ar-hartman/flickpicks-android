@@ -6,6 +6,7 @@ import coil3.network.NetworkFetcher
 import coil3.network.okhttp.asNetworkClient
 import com.flykpicks.android.AppConfig
 import com.flykpicks.android.api.ApiClient
+import com.flykpicks.android.api.TelemetrySession
 import com.flykpicks.android.api.TokenAuthenticator
 import com.flykpicks.android.image.PosterNetworkClient
 import com.flykpicks.android.store.TokenStore
@@ -19,7 +20,7 @@ import okhttp3.OkHttpClient
 import javax.inject.Qualifier
 import javax.inject.Singleton
 
-/** Shares the base connection pool; adds the API-only bearer token and refresh. */
+/** Shares the base connection pool; adds the API-only bearer token, telemetry headers and refresh. */
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class ImageHttpClient
@@ -33,9 +34,10 @@ object ImageModule {
     @ImageHttpClient
     fun provideImageClient(
         @BaseHttpClient base: OkHttpClient,
+        telemetry: TelemetrySession,
         tokenStore: TokenStore,
         authenticator: TokenAuthenticator,
-    ): OkHttpClient = ApiClient.imageClient(base, tokenStore, authenticator, AppConfig.apiBaseHttpUrl)
+    ): OkHttpClient = ApiClient.imageClient(base, telemetry, tokenStore, authenticator, AppConfig.apiBaseHttpUrl)
 
     /** The app's Coil singleton (`FlykPicksApp.newImageLoader`). Memory and disk caches are Coil's defaults. */
     @Provides

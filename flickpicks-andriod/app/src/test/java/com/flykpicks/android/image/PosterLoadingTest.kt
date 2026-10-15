@@ -28,13 +28,13 @@ class PosterLoadingTest {
 
     @Test
     fun relativePosterUrl_resolvesAgainstApi() {
-        assertEquals("http://10.0.2.2:8080/base/v1/media/poster?mediaID=m1", posterRequestUrl("v1/media/poster?mediaID=m1", null, api))
+        assertEquals("http://10.0.2.2:8080/base/v1/media/poster?flyksId=m1", posterRequestUrl("v1/media/poster?flyksId=m1", null, api))
         assertEquals("http://10.0.2.2:8080/media/p.jpg", posterRequestUrl("/media/p.jpg", null, api))
     }
 
     @Test
     fun missingPosterUrl_fallsBackToPosterEndpoint_withEncodedId() {
-        val expected = "http://10.0.2.2:8080/base/v1/media/poster?mediaID=a%20b%26c"
+        val expected = "http://10.0.2.2:8080/base/v1/media/poster?flyksId=a%20b%26c"
         assertEquals(expected, posterRequestUrl(null, "a b&c", api))
         assertEquals(expected, posterRequestUrl("", "a b&c", api))
     }
@@ -45,11 +45,19 @@ class PosterLoadingTest {
         assertNull(posterRequestUrl("", "", api))
     }
 
+    @Test
+    fun detailImageUrl_isTheDetailEndpoint_withEncodedId() {
+        assertEquals(
+            "http://10.0.2.2:8080/base/v1/media/detailImage?mediaID=a%20b%26c",
+            detailImageRequestUrl("a b&c", api),
+        )
+    }
+
     // MARK: PosterNetworkClient
 
     private val posterRequest = NetworkRequest(
-        url = "http://api/v1/media/poster?mediaID=m1",
-        extras = Extras.Builder().set(posterBackfillKey, true).build(),
+        url = "http://api/v1/media/poster?flyksId=m1",
+        extras = Extras.Builder().set(backfillPendingCodesKey, POSTER_PENDING_CODES).build(),
     )
 
     @Test
@@ -100,6 +108,24 @@ class PosterLoadingTest {
 
         assertEquals(500, result)
         assertEquals(1, server.calls)
+    }
+
+    @Test
+    fun detailImages_retryWhileBeingGenerated_butTreatNotFoundAsFinal() = runTest {
+        val detailRequest = NetworkRequest(
+            url = "http://api/v1/media/detailImage?mediaID=m1",
+            extras = Extras.Builder().set(backfillPendingCodesKey, DETAIL_IMAGE_PENDING_CODES).build(),
+        )
+
+        val generated = FakeNetworkClient(202, 200)
+        assertEquals(200, PosterNetworkClient(generated).executeRequest(detailRequest) { it.code })
+        assertEquals(2, generated.calls)
+        assertEquals(2_000L, currentTime)
+
+        val missing = FakeNetworkClient(404)
+        assertEquals(404, PosterNetworkClient(missing).executeRequest(detailRequest) { it.code })
+        assertEquals(1, missing.calls)
+        assertEquals(2_000L, currentTime)
     }
 
     @Test

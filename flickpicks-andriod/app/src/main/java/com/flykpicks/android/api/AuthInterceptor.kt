@@ -42,5 +42,5 @@ class AuthInterceptor(
     }
 }
 
-private fun HttpUrl.hasOriginOf(other: HttpUrl): Boolean =
+internal fun HttpUrl.hasOriginOf(other: HttpUrl): Boolean =
     scheme == other.scheme && host == other.host && port == other.port

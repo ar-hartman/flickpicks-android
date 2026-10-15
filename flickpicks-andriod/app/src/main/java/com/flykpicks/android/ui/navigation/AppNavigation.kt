@@ -19,6 +19,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -53,11 +54,14 @@ fun RootNavigation(authViewModel: AuthViewModel, toastStore: ToastStore) {
             onBackupCodeAlertDismiss = authViewModel::dismissBackupCodeAlert,
             onBackupCodeAlertGoToSecurity = authViewModel::openSecurityFromBackupCodeAlert,
             toast = toast,
-            placeholderActions = ShellPlaceholderActions(
-                signOut = { authViewModel.logout() },
-                showToast = toastStore::show,
-            ),
-        )
+        ) { nav ->
+            libraryGraph(nav)
+            searchGraph(nav)
+            profileGraph(
+                nav,
+                ShellPlaceholderActions(signOut = { authViewModel.logout() }, showToast = toastStore::show),
+            )
+        }
     } else {
         AuthNavHost(authViewModel)
     }
@@ -118,6 +122,9 @@ fun AuthNavHost(authViewModel: AuthViewModel, navController: NavHostController =
  * Tabs keep their back stacks, except Search, which iOS resets whenever you leave it.
  * Re-selecting the current tab pops it to its first screen. System back pops within the tab,
  * then returns to Library, then leaves the app.
+ *
+ * [tabGraphs] adds the three tabs' graphs. The shell doesn't know what is in them, which lets
+ * its tests run it over stand-in screens.
  */
 @Composable
 fun MainScaffold(
@@ -127,8 +134,8 @@ fun MainScaffold(
     onBackupCodeAlertDismiss: () -> Unit,
     onBackupCodeAlertGoToSecurity: () -> Unit,
     toast: ToastMessage?,
-    placeholderActions: ShellPlaceholderActions,
     navController: NavHostController = rememberNavController(),
+    tabGraphs: NavGraphBuilder.(NavController) -> Unit,
 ) {
     NavigationBarIcons(light = true)
     val entry by navController.currentBackStackEntryAsState()
@@ -155,9 +162,7 @@ fun MainScaffold(
                 popEnterTransition = popEnter,
                 popExitTransition = popExit,
             ) {
-                libraryGraph(navController)
-                searchGraph(navController)
-                profileGraph(navController, placeholderActions)
+                tabGraphs(navController)
             }
             // iOS: 80pt above the safe area, i.e. 31pt above its 49pt tab bar.
             ToastHost(toast, Modifier.align(Alignment.BottomCenter).padding(bottom = 31.dp))

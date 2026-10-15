@@ -3,7 +3,10 @@ package com.flykpicks.android.ui.screens.auth
 import com.flykpicks.android.api.SessionEvent
 import com.flykpicks.android.service.AuthService
 import com.flykpicks.android.service.FeatureFlagService
+import com.flykpicks.android.service.GenreService
 import com.flykpicks.android.store.FeatureFlagStore
+import com.flykpicks.android.store.GenreStore
+import com.flykpicks.android.store.PerUserState
 import com.flykpicks.android.testing.FIXED_NOW
 import com.flykpicks.android.testing.InMemoryFeatureFlagCache
 import com.flykpicks.android.testing.MFA_CHALLENGE_JSON
@@ -54,11 +57,22 @@ class AuthViewModelTest {
         Dispatchers.resetMain()
     }
 
+    // Records, for each reset of the per-user stores, whether the app was still signed in.
+    private val signedInAtReset = mutableListOf<Boolean>()
+    private var current: AuthViewModel? = null
+    private val perUserState = object : PerUserState {
+        override fun reset() {
+            signedInAtReset += current?.uiState?.value?.isAuthenticated == true
+        }
+    }
+
     private fun viewModel() = AuthViewModel(
         AuthService(net.api(), net.tokenStore, net.device, Dispatchers.Unconfined),
         FeatureFlagStore(FeatureFlagService(net.api()), InMemoryFeatureFlagCache(), net.moshi),
+        GenreStore(GenreService(net.api(), net.genres)),
+        setOf(perUserState),
         net.sessionEvents,
-    )
+    ).also { current = it }
 
     private fun AuthViewModel.signInWith(vararg loginResponses: mockwebserver3.MockResponse) = apply {
         routes.on("v2/auth/login", *loginResponses)
@@ -105,6 +119,59 @@ class AuthViewModelTest {
         net.sessionEvents.emit(SessionEvent.Ended(SessionEvent.Reason.TOKEN_REVOKED))
 
         assertNull(vm.uiState.value.errorMessage)
+    }
+
+    // MARK: Per-account state
+
+    @Test
+    fun signingIn_resetsThePerUserStores_beforeTheShellAppears_andLoadsTheGenres() {
+        val vm = viewModel().signInWith(json(SESSION_JSON))
+
+        assertTrue(vm.uiState.value.isAuthenticated)
+        assertEquals(listOf(false), signedInAtReset)
+        routes.awaitRequests("v1/genres", 1)
+    }
+
+    @Test
+    fun signingInThroughMFA_resetsThemToo() {
+        routes.on("v2/auth/mfa", json(SESSION_JSON))
+
+        viewModel().signInWith(json(MFA_CHALLENGE_JSON)).verify("123456")
+
+        assertEquals(listOf(false), signedInAtReset)
+    }
+
+    @Test
+    fun signingOut_resetsThePerUserStores_evenWhenTheServerCallFails() {
+        net.signIn()
+        routes.on("v2/auth/logout", status(500))
+        val vm = viewModel()
+
+        runBlocking { vm.logout().join() }
+
+        assertFalse(vm.uiState.value.isAuthenticated)
+        assertEquals(1, signedInAtReset.size)
+    }
+
+    @Test
+    fun aSessionEndedByTheNetwork_resetsThePerUserStores() {
+        net.signIn()
+        val vm = viewModel()
+
+        net.sessionEvents.emit(SessionEvent.Ended(SessionEvent.Reason.TOKEN_REVOKED))
+
+        assertFalse(vm.uiState.value.isAuthenticated)
+        assertEquals(1, signedInAtReset.size)
+    }
+
+    @Test
+    fun coldStartWhileSignedIn_keepsThePerUserStores_andLoadsTheGenres() {
+        net.signIn()
+
+        viewModel()
+
+        assertTrue(signedInAtReset.isEmpty())
+        routes.awaitRequests("v1/genres", 1)
     }
 
     // MARK: Login

@@ -34,4 +34,16 @@ object FlykColors {
 
     /** Destructive actions outside the Deco components (iOS system red). */
     val DangerRed = Color(0xFFCC3333)
+
+    // The library detail screens and the edit sheet on iOS use UIKit's grouped-list colors
+    // rather than the Deco palette. These are their light-mode values (plan D27).
+
+    /** Page background (iOS `systemGroupedBackground`), also the fill of pills on a card. */
+    val GroupedBackground = Color(0xFFF2F2F7)
+
+    /** Card on a grouped page (iOS `secondarySystemGroupedBackground`). */
+    val GroupedCard = Color(0xFFFFFFFF)
+
+    /** Hairline between rows of a grouped card (iOS `separator`). */
+    val GroupedSeparator = Color(0x4A3C3C43)
 }

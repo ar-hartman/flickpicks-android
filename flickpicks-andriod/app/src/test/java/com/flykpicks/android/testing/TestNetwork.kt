@@ -40,7 +40,7 @@ class TestNetwork(server: MockWebServer, val clock: Clock = Clock.fixed(FIXED_NO
     val authenticator = TokenAuthenticator(tokenStore, device, refreshApi, sessionEvents, moshi)
     val client = ApiClient.apiClient(base, telemetry, tokenStore, authenticator)
     val retrofit: Retrofit = ApiClient.retrofit(baseUrl, client, moshi, ApiErrorMapper(moshi, clock))
-    val imageClient = ApiClient.imageClient(base, tokenStore, authenticator, baseUrl.toHttpUrl())
+    val imageClient = ApiClient.imageClient(base, telemetry, tokenStore, authenticator, baseUrl.toHttpUrl())
 
     inline fun <reified T : Any> api(): T = retrofit.create()
 

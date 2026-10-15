@@ -11,11 +11,17 @@ Severity: **High** — user-visible failure in normal use · **Medium** — wron
 | # | Sev | Gap | Found in |
 |---|---|---|---|
 | [G2](#g2-network-failure-during-token-refresh-logs-the-user-out) | High | A network failure during token refresh logs the user out | P1 |
+| [G16](#g16-library-fetch-reads-only-the-first-page) | High | The library shows only the first 20 titles | P1 |
+| [G22](#g22-the-library-search-field-filters-nothing) | High | The Library's search field filters nothing | P5 |
 | [G1](#g1-429-specific-error-branches-are-unreachable) | Medium | 429-specific error branches never run | P1 |
 | [G3](#g3-session-survives-app-reinstall) | Medium | Session survives an app reinstall | P1 |
-| [G16](#g16-library-fetch-reads-only-the-first-page) | Medium | The library fetch reads only the first page | P1 |
+| [G23](#g23-a-slow-genre-fetch-files-the-whole-library-under-) | Medium | A slow or failed genre fetch files the whole library under "—" | P5 |
+| [G25](#g25-poster-fallback-url-uses-a-parameter-the-server-rejects) | Medium | Titles without a `posterUrl` never get a poster: the fallback URL uses the wrong parameter | P5 |
+| [G27](#g27-removing-a-series-last-copy-leaves-an-endless-spinner) | Medium | Removing a series' last copy from the season screen leaves an endless spinner | P5 |
+| [G28](#g28-library-detail-screens-are-unreadable-in-dark-mode) | Medium | Library detail screens and the edit sheet are unreadable in dark mode | P5 |
 | [G4](#g4-impression-retry-queue-grows-without-bound) | Medium | Impression retry queue grows without bound while offline | P1 |
-| [G5](#g5-raw-error-text-shown-to-users-in-search) | Medium | Search shows raw Swift error text to users | P1 |
+| [G34](#g34-retrying-a-partly-failed-add-duplicates-seasons) | Medium | Retrying a partly failed season add adds the saved seasons again | P6 |
+| [G5](#g5-a-failed-search-reads-no-results-found) | Medium | A failed search reads "No results found" | P1, P6 |
 | [G17](#g17-poster-requests-send-the-bearer-token-to-any-host) | Medium | Poster requests send the bearer token to any host, CDN included | P2 |
 | [G21](#g21-the-previous-accounts-data-survives-sign-out) | Medium | The previous account's profile and recommendations show after someone else signs in | P4 |
 | [G6](#g6-cancelled-requests-reported-as-no-internet-connection) | Low | Cancelled requests are reported as "No internet connection" | P1 |
@@ -29,8 +35,17 @@ Severity: **High** — user-visible failure in normal use · **Medium** — wron
 | [G19](#g19-topband-covers-the-wordmark-on-iphones-with-a-short-status-bar) | Low | TopBand covers the wordmark on iPhones with a short status bar | P2 |
 | [G18](#g18-see-all-looks-tappable-but-does-nothing) | Low | "See All" on genre rows looks tappable but does nothing | P2 |
 | [G20](#g20-signing-in-lands-on-the-tab-the-last-session-left-off) | Low | Signing in lands on whatever tab the last session left off on | P3 |
+| [G24](#g24-an-empty-season-list-is-read-as-owning-no-seasons) | Low | An empty season list is read as "owns no seasons" instead of the whole series | P5 |
+| [G26](#g26-a-failed-library-load-also-says-the-library-is-empty) | Low | A failed library load also says "Your library is empty" | P5 |
+| [G29](#g29-season-screen-shows-developer-notes-to-users) | Low | The season screen shows developer notes to users | P5 |
+| [G30](#g30-add-all-seasons-fails-silently) | Low | "Add All Seasons" fails silently | P5 |
+| [G31](#g31-a-title-owned-twice-shows-as-two-posters-and-counts-twice) | Low | A title owned in two formats shows as two posters and counts as two "titles" | P5 |
+| [G32](#g32-a-whole-series-copy-cannot-give-up-one-season) | Low | A copy that owns the whole series can't give up one season | P5 |
+| [G33](#g33-the-add-sheets-format-menu-shows-raw-values) | Low | The add sheet's format menu shows "BLURAY", "FOUR_K_ULTRA_HD" | P6 |
+| [G35](#g35-a-change-during-the-first-discover-load-is-lost) | Low | A library change or search during Discover's first load is lost | P6 |
 | [G12](#g12-error-handling-depends-on-server-message-wording) | Backend | Error handling depends on server message wording | P1 |
 | [G13](#g13-barcode-lookup-and-submission-are-stubbed) | Backend | Barcode lookup and submission are stubbed | P1 |
+| [G36](#g36-opening-a-title-from-discover-counts-as-two-or-three-views) | Backend | Opening a title from Discover counts as two or three detail views | P6 |
 
 ---
 
@@ -78,14 +93,16 @@ Severity: **High** — user-visible failure in normal use · **Medium** — wron
 
 **Fix:** Retry a batch at most once (then drop it), cap the queue size, and back off instead of flushing on every record.
 
-### G5. Raw error text shown to users in search
+### G5. A failed search reads "No results found"
 - [ ] Fixed
 
-**Where:** `Stores/SearchStore.swift:54`
+**Where:** `Stores/SearchStore.swift:54`; `Views/SearchView.swift:72–96`
 
-**Problem:** `errorMessage = "Failed to load search: \(error)"` interpolates the Swift error value. Users can see text like `networkUnavailable`, or decoding details in debug builds.
+**Problem:** When a search fails, `SearchStore` sets `errorMessage = "Failed to load search: \(error)"` (the raw Swift error), but `SearchView` never reads `errorMessage`: it shows "No results found / Try a different title", exactly as for a search that matched nothing. Offline or a server error looks like the title isn't in the catalog, and nothing offers a retry. (Phase 1 flagged the raw text from the store; Phase 6 found the screen never shows it.)
 
-**Fix:** Use `error.userFacingMessage`, as the other stores do.
+**Fix:** When `errorMessage` is set, show it (built from `error.userFacingMessage`) with a retry instead of the empty state.
+
+**Android:** A failed search shows the user-facing message and "Try Again".
 
 ### G6. Cancelled requests reported as "No internet connection"
 - [ ] Fixed
@@ -181,22 +198,22 @@ Severity: **High** — user-visible failure in normal use · **Medium** — wron
 
 **Where:** `Service/SearchService.swift:12`
 
-**Problem:** Search decodes `[MediaItem]` strictly, while the recommendation rows use `LenientArray`. If one result matches neither the movie nor the TV shape, the whole search fails, and G5 makes it worse by showing the raw error.
+**Problem:** Search decodes `[MediaItem]` strictly, while the recommendation rows use `LenientArray`. If one result matches neither the movie nor the TV shape, the whole search fails, and because of G5 the screen then says "No results found".
 
 **Fix:** Decode `LenientArray<MediaItem>`.
 
 **Android:** Search results are lenient.
 
 ### G16. Library fetch reads only the first page
-- [ ] Fixed (verify server page size)
+- [ ] Fixed
 
 **Where:** `Service/LibraryService.swift:20`
 
-**Problem:** `GET /v1/users/inventory/media` returns the paginated envelope `{items, page, totalPages, totalItems}`, but iOS sends no `page`/`limit` and never requests later pages. A collection larger than the server's default page size is silently truncated: the missing titles don't show in the Library and the header counts are low.
+**Problem:** `GET /v1/users/inventory/media` returns the paginated envelope `{items, page, totalPages, totalItems}`, but iOS sends no `page`/`limit` and never requests later pages. The backend defaults to page 1 of 20 titles and caps `limit` at 100 (`UserInventoryController.getUserInventory`), so a library of more than 20 titles is silently truncated: the rest don't show in the Library and the header counts are low. The list comes back whole only after an add, edit or removal, whose responses are unpaged.
 
-**Fix:** Confirm the server's default page size. If collections can exceed it, page until `hasMore` is false, or pass an explicit large `limit`.
+**Fix:** Request `limit=100` and page until `page >= totalPages`.
 
-**Android:** Matches iOS for now; tracked in the plan (Phase 5).
+**Android:** Reads every page at `limit=100` (`LibraryService.fetchLibrary`, Phase 5).
 
 ---
 
@@ -216,7 +233,7 @@ Severity: **High** — user-visible failure in normal use · **Medium** — wron
 ### G18. "See All" looks tappable but does nothing
 - [ ] Fixed
 
-**Where:** `Components/SearchGenreRow.swift:33`, `Components/LibraryGenreRow.swift:33`
+**Where:** `Components/SearchGenreRow.swift:33`, `Components/LibraryGenreRow.swift:33`, and the Discover rows (`Views/SearchView.swift:251`)
 
 **Problem:** Every genre row header ends in a brass "See All", styled like the app's other links, but it is a plain `Text` with no action.
 
@@ -261,7 +278,202 @@ Severity: **High** — user-visible failure in normal use · **Medium** — wron
 
 **Fix:** Reset every per-user store on sign-out (and on session expiry), and key the profile cache by user id.
 
-**Android:** No per-user stores exist yet; Phase 5 makes resetting them on sign-out a requirement.
+**Android:** Every store holding the account's data is a `PerUserState`. `AuthViewModel` resets them all on sign-out, on session expiry and again on sign-in, and a result still in flight for the previous account is dropped (Phase 5; only the library exists so far).
+
+---
+
+### G22. The Library search field filters nothing
+- [ ] Fixed
+
+**Where:** `Views/LibraryView.swift:24–40,53`
+
+**Problem:** The "Search your collection" field writes to `query`, and a `filtered` property applies it, but nothing reads `filtered`: the rows are built by `itemsByGenre` from `libraryStore.items`. Typing in the field changes nothing on screen.
+
+**Fix:** Group `filtered` instead of `libraryStore.items`, and show a "no results" state when the filter leaves nothing.
+
+**Android:** The rows are filtered by title as you type; the header counts stay for the whole library; no match shows "No results found".
+
+---
+
+### G23. A slow genre fetch files the whole library under "—"
+- [ ] Fixed
+
+**Where:** `Models/LibraryItem.swift:31`; `RootView.swift:72–74`; `Views/LibraryView.swift:113–116`; `Models/Genre.swift:38–40`
+
+**Problem:** A title's genre names are looked up once, when the library response is decoded. The genre table is fetched by a separate task that starts at the same time, so if the library answers first (or the genre fetch fails, which is silent and not retried), every title gets "—" and the Library is one long row titled "—" until some later reload.
+
+**Fix:** Wait for the genre table before mapping titles, or keep the genre ids on the item and resolve names when rendering. Retry a failed genre fetch.
+
+**Android:** Every library load waits for `GenreStore.loadIfNeeded()` first, and a failed genre fetch is retried by the next load.
+
+---
+
+### G24. An empty season list is read as owning no seasons
+- [ ] Fixed
+
+**Where:** `Models/LibraryItem.swift:39`; `Stores/LibraryStore.swift:69–73`; `Views/TVSeasonDetailView.swift:23–34`
+
+**Problem:** The backend documents a unit's `ownedSeasons` as "null/empty means whole series" (`InventoryUnitDTO`). iOS treats only `nil` that way. A unit that arrives with `[]` owns no season as far as the season rows are concerned, and the season screen offers "Add Season N" for it, which would replace whole-series ownership with that one season.
+
+**Fix:** Map an empty list to `nil` when building `LibraryItemImpl`.
+
+**Android:** An empty list becomes null (whole series) in `toLibraryItems`.
+
+---
+
+### G25. Poster fallback URL uses a parameter the server rejects
+- [ ] Fixed
+
+**Where:** `Components/AsyncPosterImage.swift:16–17`
+
+**Problem:** When a title has no `posterUrl`, iOS builds `v1/media/poster?mediaID=<id>`. The endpoint's parameter is `flyksId` (`MediaController.getMediaPoster`, and the `posterUrl`s the server itself emits are `/v1/media/poster?flyksId=…`), so the request is a 400 and the title keeps its placeholder. (`v1/media/detailImage` does take `mediaID`.)
+
+**Fix:** Send `flyksId`.
+
+**Android:** The fallback sends `flyksId` (`posterRequestUrl`). Phase 2 had copied `mediaID` from iOS.
+
+---
+
+### G26. A failed library load also says the library is empty
+- [ ] Fixed
+
+**Where:** `Views/LibraryView.swift:73–95`
+
+**Problem:** The error view shows when there is an error and no items; the empty state shows when there are no items and nothing is loading. After a failed first load both conditions hold, so the screen reads "Couldn't load your library…" with "Your library is empty" beneath it. The empty state also flashes for a frame before the first load starts.
+
+**Fix:** Track whether a load has succeeded and show the empty state only then.
+
+**Android:** One state at a time: spinner until a load succeeds or fails, then the error, the empty state, or the rows.
+
+---
+
+### G27. Removing a series' last copy leaves an endless spinner
+- [ ] Fixed
+
+**Where:** `Views/TVSeasonDetailView.swift:360–370`; `Views/LibraryItemDetailView.swift:32,66–68`
+
+**Problem:** Taking the last season off a series' only copy removes the copy and dismisses the season screen. That returns to the title's screen, which now has no copies to show and renders its `ProgressView` forever. The same happens if the title is removed elsewhere while its screen is open.
+
+**Fix:** Dismiss the title screen too when its title has no copies left.
+
+**Android:** Both screens close themselves once the library has loaded and holds no copy of the title (after any removal still in flight has been confirmed).
+
+---
+
+### G28. Library detail screens are unreadable in dark mode
+- [ ] Fixed (not run on a device; from the code)
+
+**Where:** `Views/LibraryItemDetailView.swift:104,172,219`; `Views/TVSeasonDetailView.swift:96,114,171`; `Components/EditLibraryItemSheet.swift:47,163,240`
+
+**Problem:** These screens use UIKit's grouped-list colors (`systemGroupedBackground` and its secondary and tertiary variants), which turn black and dark gray in dark mode, under text in the fixed near-black `DecoTheme.ink`. Nothing in the project pins the app to light mode (no `preferredColorScheme`, no `UIUserInterfaceStyle`). The rest of the app paints its own cream backgrounds and is unaffected.
+
+**Fix:** Pin the app to light mode, or use the Deco palette on these screens.
+
+**Android:** Light-only (plan D13), with the light values of those colors as fixed tokens (plan D27).
+
+---
+
+### G29. Season screen shows developer notes to users
+- [ ] Fixed
+
+**Where:** `Views/TVSeasonDetailView.swift:123–138`
+
+**Problem:** The Episodes and Cast cards read "Backend support for per-season episode data is pending. See gap analysis." (and the same for cast). That is a note to the team, shown to every user who opens a season.
+
+**Fix:** Drop the subtitles, or hide the cards until the data exists.
+
+**Android:** The cards say only "Episode list coming soon" and "Cast information coming soon".
+
+---
+
+### G30. "Add All Seasons" fails silently
+- [ ] Fixed
+
+**Where:** `Views/LibraryItemDetailView.swift:235–241`
+
+**Problem:** The button's request runs under `try?`. When it fails, nothing happens: no message, and the button stays as it was.
+
+**Fix:** Report the failure, as the season screen does for its own changes.
+
+**Android:** A failure shows the "Couldn't update seasons" alert; the buttons are disabled while a change is in flight.
+
+---
+
+### G31. A title owned twice shows as two posters and counts twice
+- [ ] Fixed (needs a product decision)
+
+**Where:** `Components/LibraryGenreRow.swift:27,45`; `Views/LibraryView.swift:59`
+
+**Problem:** The Library lists one entry per physical copy. A film owned on DVD and Blu-Ray appears as two identical posters side by side, both opening the same title screen, and adds two to the "TITLES" count and to its row's "N titles".
+
+**Fix:** Decide whether the Library lists titles or copies. If titles, group by `titleId` (and long-press "Remove" then needs to say which copy).
+
+**Android:** Matches iOS (one poster per copy) until the product decides.
+
+---
+
+### G32. A whole-series copy cannot give up one season
+- [ ] Fixed
+
+**Where:** `Views/TVSeasonDetailView.swift:246,317–338`
+
+**Problem:** `performRemoveSeason` has a branch for a copy that owns the whole series (turn it into an explicit list minus this season), but the "Remove" button is only drawn for copies that already have a season list. The branch can't run, `allSeasonNumbers` is passed in only for it, and a whole-series copy has no way to drop a season short of removing the copy.
+
+**Fix:** Show "Remove" for whole-series copies too, or delete the branch and the parameter.
+
+**Android:** Matches the iOS screen: no "Remove" on a whole-series copy.
+
+---
+
+### G33. The add sheet's format menu shows raw values
+- [ ] Fixed
+
+**Where:** `Components/AddToLibrarySheet.swift:100`
+
+**Problem:** The Format menu's label is `selectedFormat.rawValue`, so it reads "BLURAY" or "FOUR_K_ULTRA_HD", while the menu's own items, the Condition menu, the per-season menus and the edit sheet all use display names ("Blu-Ray", "4K UHD").
+
+**Fix:** Use `selectedFormat.displayName`.
+
+**Android:** Display names throughout.
+
+---
+
+### G34. Retrying a partly failed add duplicates seasons
+- [ ] Fixed
+
+**Where:** `Components/AddToLibrarySheet.swift:393–411`
+
+**Problem:** Seasons picked in different formats or conditions are saved as one request per format and condition. If a later request fails, the sheet shows the error but keeps every season selected, though the earlier requests already added theirs. Tapping Save again sends them all again, and the library ends up with a second copy of the seasons that were saved the first time.
+
+**Fix:** Drop the seasons already saved from the selection (and say they were added), or save everything in one request.
+
+**Android:** The saved seasons leave the selection and the error starts "Added Season 1."; Save sends only the rest.
+
+---
+
+### G35. A change during the first Discover load is lost
+- [ ] Fixed
+
+**Where:** `Stores/RecommendationsStore.swift:121–122`, `:143–184`
+
+**Problem:** `markStale` returns early until the first full load has finished. A library change or a search that lands while that load is in flight is dropped, and the load's "Because You Own It" or "Based on Searches" rows may have been fetched before it, so they stay out of date until the next change. Rows also have no notion of which fetch is newest: a pull to refresh racing a row's reload keeps whichever answer arrives last.
+
+**Fix:** Let `markStale` reload the affected rows while the first load is in flight, and keep only the latest fetch's answer per row.
+
+**Android:** Both (`RecommendationsStore`, Phase 6).
+
+---
+
+### G36. Opening a title from Discover counts as two or three views
+- [ ] Fixed (needs backend)
+
+**Where:** `Views/SearchItemDetailView.swift:31–37`; backend `TelemetryRoutes` (`/v1/media/detailImage`, `/v1/media/{flyksId}`, `/v1/media/tv/{flyksId}/seasons` are all detail views)
+
+**Problem:** The detail screen calls `GET /v1/media/{flyksId}`, the endpoint the backend added so a tap could be attributed, and its backdrop loads `/v1/media/detailImage`; a series also loads its seasons. The backend counts each of these as a view of the title. Its own comment says the `detailImage` entry is an interim proxy to be removed once iOS adopts `GET /v1/media/{flyksId}`, which iOS now has, so every Discover tap is counted twice (three times for a series). The Library's title screen counts twice for a series (backdrop and seasons).
+
+**Fix:** Remove `/v1/media/detailImage` from the backend's detail routes, and decide whether the seasons request should count.
+
+**Android:** Makes the same requests as iOS, so the counts match iOS until the backend changes.
 
 ---
 
@@ -308,3 +520,12 @@ Severity: **High** — user-visible failure in normal use · **Medium** — wron
 | MFA reset: only 429 is shown | Any error is shown (429 is the only one the server is expected to return) |
 | Auth methods (`register`, `requestOTP`, …) live on `AuthViewModel` | iOS `AuthStore` has them as pass-throughs, but each screen holds its own state |
 | `DecoFrame`, `DecoSelectorButton`, `PosterHeaderView` are components to build | iOS defines them but no screen uses them |
+| `GET /v1/users/inventory/media` is one call | It is paged (20 a page by default, 100 at most); read every page |
+| `updateItem` is optimistic | iOS waits for the server's list on an edit; only removal is optimistic. Android does both optimistically (plan D29) |
+| `EditLibraryItemSheet`: "same layout as `AddToLibrarySheet`" | Its own sheet: header card, Format and Condition menus, Save, "Remove from library" behind a confirmation, Cancel |
+| Library detail is one screen, unspecified | A title screen (backdrop, overview, copies, seasons) that pushes a season screen where seasons are added to and taken off copies |
+| Discover rows: popular rows first, inventory and search-history rows hidden when empty, titles "Popular Films", "From Your Collection", "Based on Your Searches" | All eight rows always shown, in the order Because You Own It · Movies, Based on Searches · Movies, Because You Own It · TV, Based on Searches · TV, Popular Movies, Top Rated Movies, Popular TV, Top Rated TV; an empty row says "Nothing to show yet." |
+| A stale recommendation row reloads the next time the screen appears | It reloads at once (once the first load has finished) |
+| Empty search: "No results for "{query}"" | "No results found" / "Try a different title" |
+| `SearchItemDetailScreen`: top app bar, poster header, rating and language chips, genre tags, a seasons list, an "already in library" state | TopBand with Back, backdrop, title, "release date • genres", type chip, "Overview:", "Add To Inventory"; seasons only in the add sheet; no owned state |
+| `AddToLibrarySheet`: selector-button grids, season toggle buttons, "Add to Library" CTA | Format and Condition menus; an "All Seasons" switch, or pick seasons → confirm → a format and condition per season; Save / Not now; one add request per format and condition |

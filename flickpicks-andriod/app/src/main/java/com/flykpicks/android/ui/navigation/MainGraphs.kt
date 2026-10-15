@@ -7,7 +7,6 @@ import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CreditCard
 import androidx.compose.material.icons.outlined.Inventory2
-import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PieChart
@@ -16,11 +15,12 @@ import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.SupportAgent
-import androidx.compose.material.icons.outlined.Tv
 import androidx.compose.material.icons.outlined.Widgets
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
@@ -32,12 +32,15 @@ import com.flykpicks.android.ui.components.DecoCTAButton
 import com.flykpicks.android.ui.components.DecoCTAVariant
 import com.flykpicks.android.ui.gallery.ComponentGallery
 import com.flykpicks.android.ui.navigation.NavRoutes.Companion.ARG_DISPUTE_ID
-import com.flykpicks.android.ui.navigation.NavRoutes.Companion.ARG_FLYKS_ID
 import com.flykpicks.android.ui.navigation.NavRoutes.Companion.ARG_ID
 import com.flykpicks.android.ui.navigation.NavRoutes.Companion.ARG_ORDER_ID
 import com.flykpicks.android.ui.navigation.NavRoutes.Companion.ARG_SEASON
-import com.flykpicks.android.ui.navigation.NavRoutes.Companion.ARG_SOURCE
-import com.flykpicks.android.ui.navigation.NavRoutes.Companion.ARG_TITLE_ID
+import com.flykpicks.android.ui.screens.library.LibraryItemDetailScreen
+import com.flykpicks.android.ui.screens.library.LibraryItemDetailViewModel
+import com.flykpicks.android.ui.screens.library.LibraryScreen
+import com.flykpicks.android.ui.screens.library.TVSeasonDetailScreen
+import com.flykpicks.android.ui.screens.search.SearchItemDetailScreen
+import com.flykpicks.android.ui.screens.search.SearchScreen
 
 /** Shell actions the Phase 3 placeholders call. Goes away as the real screens land. */
 data class ShellPlaceholderActions(
@@ -47,64 +50,62 @@ data class ShellPlaceholderActions(
 
 private fun NavBackStackEntry.arg(name: String): String? = arguments?.getString(name)
 
+/** The Library tab (blueprint §10.7, iOS `LibraryView` and the screens it pushes). */
 fun NavGraphBuilder.libraryGraph(nav: NavController) {
     navigation(startDestination = MainTab.Library.startRoute, route = MainTab.Library.graphRoute) {
-        composable(NavRoutes.Library.route) {
-            TabRootPlaceholder(
-                title = "Library",
-                phase = 5,
-                links = listOf(
-                    PlaceholderLink("The Third Man", { nav.navigate(NavRoutes.LibraryDetail.build("title-1")) }, Icons.Outlined.Movie),
-                    PlaceholderLink("Twin Peaks", { nav.navigate(NavRoutes.LibraryDetail.build("title-2")) }, Icons.Outlined.Tv),
-                ),
+        composable(NavRoutes.Library.route) { entry ->
+            LibraryScreen(
+                viewModel = hiltViewModel(),
+                onOpenTitle = { titleId -> nav.navigateFrom(entry, NavRoutes.LibraryDetail.build(titleId)) },
             )
         }
         composable(NavRoutes.LibraryDetail.route) { entry ->
-            val titleId = entry.arg(ARG_TITLE_ID)
-            PushedPlaceholder(
-                title = "Library Item",
-                phase = 5,
-                onBack = nav::popBackStack,
-                args = listOf(ARG_TITLE_ID to titleId),
-                links = listOf(
-                    PlaceholderLink("Season 1", { nav.navigate(NavRoutes.TVSeasonDetail.build(titleId.orEmpty(), 1)) }),
-                    PlaceholderLink("Season 2", { nav.navigate(NavRoutes.TVSeasonDetail.build(titleId.orEmpty(), 2)) }),
-                ),
+            val viewModel: LibraryItemDetailViewModel = hiltViewModel()
+            LibraryItemDetailScreen(
+                viewModel = viewModel,
+                onBack = { nav.popFrom(entry) },
+                onOpenSeason = { season -> nav.navigateFrom(entry, NavRoutes.TVSeasonDetail.build(viewModel.titleId, season)) },
             )
         }
         composable(
             NavRoutes.TVSeasonDetail.route,
             arguments = listOf(navArgument(ARG_SEASON) { type = NavType.IntType }),
         ) { entry ->
-            PushedPlaceholder(
-                title = "Season ${entry.arguments?.getInt(ARG_SEASON)}",
-                phase = 5,
-                onBack = nav::popBackStack,
-                args = listOf(ARG_TITLE_ID to entry.arg(ARG_TITLE_ID), ARG_SEASON to entry.arguments?.getInt(ARG_SEASON)?.toString()),
+            // A season is always pushed from its title's screen and works on that screen's
+            // ViewModel (the seasons it fetched), so the lookup is by the entry beneath.
+            val titleEntry = remember(entry) { nav.getBackStackEntry(NavRoutes.LibraryDetail.route) }
+            TVSeasonDetailScreen(
+                viewModel = hiltViewModel(titleEntry),
+                seasonNumber = checkNotNull(entry.arguments).getInt(ARG_SEASON),
+                onBack = { nav.popFrom(entry) },
             )
         }
     }
 }
 
+// A screen stays composed while it animates out, so its buttons can still be tapped and its
+// effects can still fire after it has left the top of the stack. These act only for the screen
+// that is on top: a double tap can't push twice or pop two screens.
+
+private fun NavController.navigateFrom(entry: NavBackStackEntry, route: String) {
+    if (currentBackStackEntry?.id == entry.id) navigate(route)
+}
+
+private fun NavController.popFrom(entry: NavBackStackEntry) {
+    if (currentBackStackEntry?.id == entry.id) popBackStack()
+}
+
+/** The Discover tab (blueprint §10.5–10.6, iOS `SearchView` and the detail it pushes). */
 fun NavGraphBuilder.searchGraph(nav: NavController) {
     navigation(startDestination = MainTab.Search.startRoute, route = MainTab.Search.graphRoute) {
-        composable(NavRoutes.Search.route) {
-            TabRootPlaceholder(
-                title = "Discover",
-                phase = 6,
-                links = listOf(
-                    PlaceholderLink("Brazil (popular movies)", { nav.navigate(NavRoutes.SearchDetail.build("m1", "recommendation.popularMovies")) }, Icons.Outlined.Movie),
-                    PlaceholderLink("Columbo (search result)", { nav.navigate(NavRoutes.SearchDetail.build("t 1/x", "search.results")) }, Icons.Outlined.Tv),
-                ),
+        composable(NavRoutes.Search.route) { entry ->
+            SearchScreen(
+                viewModel = hiltViewModel(),
+                onOpenTitle = { item, source -> nav.navigateFrom(entry, NavRoutes.SearchDetail.build(item.flyksId, source)) },
             )
         }
         composable(NavRoutes.SearchDetail.route) { entry ->
-            PushedPlaceholder(
-                title = "Title Detail",
-                phase = 6,
-                onBack = nav::popBackStack,
-                args = listOf(ARG_FLYKS_ID to entry.arg(ARG_FLYKS_ID), ARG_SOURCE to entry.arg(ARG_SOURCE)),
-            )
+            SearchItemDetailScreen(viewModel = hiltViewModel(), onBack = { nav.popFrom(entry) })
         }
     }
 }

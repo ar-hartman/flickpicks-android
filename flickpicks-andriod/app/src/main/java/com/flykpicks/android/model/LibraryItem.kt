@@ -29,13 +29,18 @@ data class LibraryItemImpl(
     val appraisalSource: String,
     val dateAdded: String?,
     val overview: String,
-)
+) {
+    /** Always true for movies, whose units carry no seasons. */
+    fun ownsSeason(seasonNumber: Int): Boolean = ownedSeasons == null || seasonNumber in ownedSeasons
+}
 
 /** Flattens title → copies → units into one item per physical unit (blueprint Appendix A). */
 fun InventoryTitleDTO.toLibraryItems(genres: GenreTranslator): List<LibraryItemImpl> =
     copies.flatMap { copy ->
         copy.units.map { unit ->
-            val seasons = if (isMovie) null else unit.ownedSeasons
+            // The server sends null or an empty list for "whole series"; iOS keeps the empty
+            // list and then reads it as owning no seasons (ios-gaps.md G24).
+            val seasons = if (isMovie) null else unit.ownedSeasons?.takeIf { it.isNotEmpty() }
             LibraryItemImpl(
                 id = unit.mediaInventoryItemId,
                 titleId = mediaItemId,
@@ -44,7 +49,7 @@ fun InventoryTitleDTO.toLibraryItems(genres: GenreTranslator): List<LibraryItemI
                 year = releaseYear,
                 genre = genres.joinedNames(genreIds),
                 posterUrl = posterUrl,
-                season = seasons?.takeIf { it.isNotEmpty() }?.joinToString(", "),
+                season = seasons?.joinToString(", "),
                 ownedSeasons = seasons,
                 format = MediaFormat.fromRaw(copy.format) ?: MediaFormat.DVD,
                 // Unknown conditions read as NEW, matching iOS (ios-gaps.md G11).
